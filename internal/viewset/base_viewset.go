@@ -1,5 +1,4 @@
 package viewset
-package viewset
 
 import (
 	"fmt"

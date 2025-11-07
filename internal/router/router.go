@@ -1,5 +1,4 @@
 package router
-package router
 
 import (
 	"go-viewset/internal/viewset"

@@ -1,4 +1,3 @@
-package goviewset
 package main
 
 import (
