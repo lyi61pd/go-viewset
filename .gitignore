@@ -49,3 +49,5 @@ vendor/
 # Temporary files
 tmp/
 temp/
+
+__debug*

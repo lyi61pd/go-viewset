@@ -25,8 +25,9 @@ func NewUserViewSet(db *gorm.DB) *UserViewSet {
 // RegisterRoutes 注册路由
 // 除了标准的 CRUD 路由外，还注册自定义 action
 func (v *UserViewSet) RegisterRoutes(group *gin.RouterGroup) {
-	// 注册标准 RESTful 路由
-	v.GenericViewSet.RegisterRoutes(group)
+	// 注册标准 RESTful 路由（使用子类的方法）
+	group.GET("/", v.List) // 使用覆盖后的 List 方法
+	group.POST("/", v.Create) // 使用覆盖后的 Create 方法
 
 	// 注册自定义 action
 	// POST /users/:id/activate - 激活用户
@@ -140,6 +141,56 @@ func (v *UserViewSet) GetStats(c *gin.Context) {
 
 // 可以覆盖父类的方法来自定义行为
 // 例如：在创建用户前进行额外的验证
+
+// List 覆盖列表方法，添加 keyword 搜索功能
+// 支持通过 ?keyword=xxx 对 name、email、phone 进行模糊搜索
+func (v *UserViewSet) List(c *gin.Context) {
+	// 创建结果切片
+	var users []models.User
+
+	// 获取分页参数
+	paginationParams := utils.GetPaginationParams(c)
+
+	// 获取过滤参数
+	filterParams := utils.GetFilterParams(c, "keyword") // 排除 keyword，因为我们要单独处理
+
+	// 构建查询
+	query := v.DB.Model(&models.User{})
+
+	// 处理 keyword 搜索（多字段模糊匹配）
+	keyword := c.Query("keyword")
+	if keyword != "" {
+		// 使用 OR 条件对多个字段进行模糊搜索
+		query = query.Where(
+			"name LIKE ? OR email LIKE ? OR phone LIKE ?",
+			"%"+keyword+"%",
+			"%"+keyword+"%",
+			"%"+keyword+"%",
+		)
+	}
+
+	// 应用其他过滤条件（如 status、age 等）
+	query = utils.ApplyFilters(query, filterParams)
+
+	// 获取总数（在应用分页之前）
+	var total int64
+	query.Count(&total)
+
+	// 应用分页
+	query = utils.ApplyPagination(query, paginationParams)
+
+	// 执行查询
+	if err := query.Find(&users).Error; err != nil {
+		utils.InternalServerError(c, fmt.Sprintf("查询失败: %v", err))
+		return
+	}
+
+	// 构建分页信息
+	pagination := utils.BuildPagination(paginationParams, total)
+
+	// 返回结果
+	utils.SuccessWithPagination(c, users, pagination)
+}
 
 // Create 覆盖创建方法，添加自定义逻辑
 func (v *UserViewSet) Create(c *gin.Context) {
