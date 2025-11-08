@@ -2,18 +2,26 @@ package main
 
 import (
 	"fmt"
+	"go-viewset/internal/config"
 	"go-viewset/internal/models"
 	"go-viewset/internal/router"
 	"log"
+	"time"
 
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
 func main() {
+	// 加载配置
+	cfg, err := config.Load("config.json")
+	if err != nil {
+		log.Fatalf("加载配置失败: %v", err)
+	}
+
 	// 初始化数据库
-	db, err := initDB()
+	db, err := initDB(cfg)
 	if err != nil {
 		log.Fatalf("数据库初始化失败: %v", err)
 	}
@@ -22,8 +30,7 @@ func main() {
 	r := router.SetupRouter(db)
 
 	// 启动服务
-	port := ":8080"
-	fmt.Printf("🚀 服务启动成功，监听端口: %s\n", port)
+	fmt.Printf("🚀 服务启动成功，监听端口: %s\n", cfg.Server.Port)
 	fmt.Println("📚 API 文档:")
 	fmt.Println("  - GET    /api/users/          获取用户列表")
 	fmt.Println("  - GET    /api/users/:id       获取单个用户")
@@ -36,21 +43,32 @@ func main() {
 	fmt.Println("  - GET    /api/users/stats     获取统计信息")
 	fmt.Println("")
 
-	if err := r.Run(port); err != nil {
+	if err := r.Run(cfg.Server.Port); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
 	}
 }
 
 // initDB 初始化数据库
-func initDB() (*gorm.DB, error) {
-	// 使用 SQLite 作为示例数据库
-	// 生产环境可以替换为 MySQL 或 PostgreSQL
-	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{
+func initDB(cfg *config.Config) (*gorm.DB, error) {
+	// 构建 DSN 连接字符串
+	dsn := cfg.Database.GetDSN()
+
+	// 连接数据库
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("连接数据库失败: %w", err)
 	}
+
+	// 设置连接池
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("获取数据库实例失败: %w", err)
+	}
+	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(cfg.Database.MaxOpenConns)
+	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// 自动迁移表结构
 	if err := db.AutoMigrate(&models.User{}); err != nil {
